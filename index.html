@@ -209,6 +209,10 @@
   .sbar{position:relative;height:10px;background:var(--separator);border-radius:5px;overflow:hidden;}
   .sbar-fill{height:100%;border-radius:5px;transition:width .5s;}
   .sbar-line{position:absolute;top:-2px;width:2px;height:14px;background:var(--text);opacity:.45;}
+  .bk-btn{display:block;width:100%;text-align:center;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:6px;}
+  .bk-export{background:#007aff15;color:var(--primary);}
+  .bk-import{background:var(--fill);color:var(--text);}
+  .bk-btn:active{opacity:.7;}
 </style>
 </head>
 <body>
@@ -322,6 +326,14 @@
     </div>
     <button class="test-btn" onclick="testVoice()">🔊 テスト再生</button>
     <div class="modal-tip" id="voiceTip"></div>
+    <div class="field" style="margin-top:20px">
+      <div class="field-label">データ管理（進捗のバックアップ）</div>
+      <button class="bk-btn bk-export" onclick="exportData()">📥 学習データを書き出し（保存）</button>
+      <label class="bk-btn bk-import">📤 バックアップから復元
+        <input type="file" accept="application/json,.json" style="display:none" onchange="importData(this)">
+      </label>
+      <div class="modal-tip" id="backupInfo"></div>
+    </div>
     <button class="modal-close" onclick="closeSettings()">完了</button>
   </div>
 </div>
@@ -1262,13 +1274,53 @@ function populateVoiceSelect(){
   const tip=document.getElementById("voiceTip");
   if(tip){const best=voicesEn[0];if(!voicesEn.length)tip.textContent="この端末に英語音声が見つかりません。";else if(best&&voiceScore(best)<30)tip.innerHTML="💡 より自然な声を使うには：<br>iOS → 設定 > アクセシビリティ > 読み上げコンテンツ > 声 > 英語 で「拡張」「プレミアム」音声をDL<br>Mac → システム設定 > アクセシビリティ > 読み上げコンテンツ > システムの声 > 管理";else tip.textContent="⭐付きは高品質音声です。";}
 }
-function openSettings(){document.getElementById("rateSlider").value=rate;document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";document.getElementById("npdSlider").value=newPerDay;document.getElementById("npdVal").textContent=newPerDay+"語/日";document.getElementById("goalSlider").value=goalBand;document.getElementById("goalVal").textContent=goalBand.toFixed(1);populateVoiceSelect();document.getElementById("settingsModal").classList.add("on");}
+function openSettings(){document.getElementById("rateSlider").value=rate;document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";document.getElementById("npdSlider").value=newPerDay;document.getElementById("npdVal").textContent=newPerDay+"語/日";document.getElementById("goalSlider").value=goalBand;document.getElementById("goalVal").textContent=goalBand.toFixed(1);populateVoiceSelect();updateBackupInfo();document.getElementById("settingsModal").classList.add("on");}
 function closeSettings(){document.getElementById("settingsModal").classList.remove("on");spkStop();updDailyInfo();}
 function saveVoice(){chosenVoiceURI=document.getElementById("voiceSelEn").value;localStorage.setItem("spk_voice",chosenVoiceURI);}
 function saveRate(){rate=parseFloat(document.getElementById("rateSlider").value);document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";localStorage.setItem("spk_rate",rate);}
 function saveNpd(){newPerDay=parseInt(document.getElementById("npdSlider").value);document.getElementById("npdVal").textContent=newPerDay+"語/日";localStorage.setItem("newPerDay",newPerDay);}
 function saveGoal(){goalBand=parseFloat(document.getElementById("goalSlider").value);document.getElementById("goalVal").textContent=goalBand.toFixed(1);localStorage.setItem("goalBand",goalBand);}
 function testVoice(){spkStart("Climate change is one of the most pressing issues of our time.","en-US",null);}
+// ── 学習データのバックアップ/復元 ──
+const BK_KEYS=["srs","newLog","streak","skillStats","goalBand","newPerDay","ia","ielts_again","ielts_deck","spk_voice","spk_rate","tab","fmt","cf","cc","id"];
+function exportData(){
+  const data={};BK_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v!==null)data[k]=v;});
+  const payload=JSON.stringify({app:"ielts-flashcards",version:1,exported:new Date().toISOString(),data:data},null,1);
+  const blob=new Blob([payload],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download="ielts-progress-"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  localStorage.setItem("lastBackup",new Date().toISOString());
+  updateBackupInfo();
+}
+function importData(input){
+  const f=input.files&&input.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=function(e){
+    try{
+      const obj=JSON.parse(e.target.result);
+      if(!obj||!obj.data){alert("このファイルはバックアップ形式ではありません。");return;}
+      const cnt=obj.data.srs?Object.keys(JSON.parse(obj.data.srs)).length:0;
+      if(!confirm("現在の進捗を、このバックアップ（学習 "+cnt+" 項目）で上書きします。よろしいですか？"))return;
+      Object.keys(obj.data).forEach(function(k){localStorage.setItem(k,obj.data[k]);});
+      alert("復元しました。アプリを再読み込みします。");
+      location.reload();
+    }catch(err){alert("読み込みエラー："+err.message);}
+  };
+  r.readAsText(f);input.value="";
+}
+function updateBackupInfo(){
+  const el=document.getElementById("backupInfo");if(!el)return;
+  const srs=JSON.parse(localStorage.getItem("srs")||"{}");
+  const learned=Object.keys(srs).length;
+  const lb=localStorage.getItem("lastBackup");
+  let msg="現在の学習データ：<b>"+learned+" 項目</b>";
+  if(lb){const d=new Date(lb);msg+="<br>最終バックアップ："+d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
+  else{msg+="<br>⚠️ まだバックアップ未実施。新しい教材を追加する前に書き出しを推奨します。";}
+  el.innerHTML=msg;
+}
 
 // ── 初期化 ──
 document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));
