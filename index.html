@@ -317,6 +317,10 @@
       <div class="row-flex"><input type="range" class="slider" id="goalSlider" min="4" max="9" step="0.5" value="7" oninput="saveGoal()"><span class="slider-val" id="goalVal">7.0</span></div>
     </div>
     <div class="field">
+      <div class="field-label">1日の英作文 新規数（今日のおまかせに混ぜる）</div>
+      <div class="row-flex"><input type="range" class="slider" id="spdSlider" min="0" max="40" step="5" value="15" oninput="saveSpd()"><span class="slider-val" id="spdVal">15文/日</span></div>
+    </div>
+    <div class="field">
       <div class="field-label">英語の声</div>
       <select class="vsel" id="voiceSelEn" onchange="saveVoice()"></select>
     </div>
@@ -482,6 +486,9 @@ function saveSRS(){localStorage.setItem("srs",JSON.stringify(SRS));}
 function todayStr(){return new Date().toDateString();}
 function newUsedToday(){const l=JSON.parse(localStorage.getItem("newLog")||"{}");return l.date===todayStr()?l.count:0;}
 function incNewToday(){const l=JSON.parse(localStorage.getItem("newLog")||"{}");const c=(l.date===todayStr()?l.count:0)+1;localStorage.setItem("newLog",JSON.stringify({date:todayStr(),count:c}));}
+let sentPerDay=parseInt(localStorage.getItem("sentPerDay")||"15");
+function newUsedTodayS(){const l=JSON.parse(localStorage.getItem("newLogS")||"{}");return l.date===todayStr()?l.count:0;}
+function incNewTodayS(){const l=JSON.parse(localStorage.getItem("newLogS")||"{}");const c=(l.date===todayStr()?l.count:0)+1;localStorage.setItem("newLogS",JSON.stringify({date:todayStr(),count:c}));}
 
 // ── デッキ定義 ──
 function buildDecks(){
@@ -506,8 +513,21 @@ function buildQueue(){
     const due=CARDS.filter(c=>SRS[c.word]&&SRS[c.word].due<=now);
     const remain=Math.max(0,newPerDay-newUsedToday());
     const fresh=CARDS.filter(c=>!SRS[c.word]).slice(0,remain);
-    let q=shuffle(due.concat(fresh));
-    return lagInsert(q,fresh);   // 新規語をセッション後半でもう一度
+    let q=lagInsert(shuffle(due.concat(fresh)),fresh);
+    // 瞬間英作文(SENTENCES)も統合：due復習 + 新規(上限sentPerDay)
+    const dueS=SENTENCES.filter(c=>SRS[c.word]&&SRS[c.word].due<=now);
+    const remainS=Math.max(0,sentPerDay-newUsedTodayS());
+    const freshS=SENTENCES.filter(c=>!SRS[c.word]).slice(0,remainS);
+    const sents=shuffle(dueS.concat(freshS));
+    // 単語列に英作文を均等に差し込む（インターリーブ）
+    if(sents.length){
+      const merged=[];const ratio=Math.max(1,Math.floor(q.length/(sents.length+1)));
+      let si=0;
+      for(let i=0;i<q.length;i++){merged.push(q[i]);if((i+1)%ratio===0&&si<sents.length)merged.push(sents[si++]);}
+      while(si<sents.length)merged.push(sents[si++]);
+      return merged;
+    }
+    return q;
   }else if(tab==="deck"){
     return shuffle((DECKS[curDeck]||{cards:[]}).cards.slice());
   }else if(tab==="comp"){
@@ -562,7 +582,7 @@ function grade(c,q){ // q: 0=again 2=good 3=easy
   }
   s.lastSeen=now;
   SRS[c.word]=s;saveSRS();
-  if(wasNew)incNewToday();
+  if(wasNew){if(c.isSent)incNewTodayS();else incNewToday();}
   trackSkill(effFmt,q>=2);
   updateStreak();
 }
@@ -682,7 +702,9 @@ function updDailyInfo(){
     const usedNew=newUsedToday();
     const remainNew=Math.max(0,newPerDay-usedNew);
     el.style.display="flex";
-    el.innerHTML='<span>📅 今日：<b>新規 '+remainNew+'</b>（残）</span><span>🔁 <b>復習 '+due+'</b></span><span>本日学習済 '+usedNew+'語</span>';
+    const dueS=SENTENCES.filter(c=>SRS[c.word]&&SRS[c.word].due<=Date.now()).length;
+    const remainS=Math.max(0,sentPerDay-newUsedTodayS());
+    el.innerHTML='<span>📅 単語：<b>新規 '+remainNew+'</b>／復習 '+due+'</span><span>📝 英作文：<b>新規 '+remainS+'</b>／復習 '+dueS+'</span>';
   }else if(tab==="weak"){
     const n=CARDS.filter(c=>SRS[c.word]&&(SRS[c.word].lapses>0||SRS[c.word].ease<2.0)).length;
     el.style.display="flex";el.innerHTML='<span>🔥 苦手リスト：<b>'+n+'語</b></span>';
@@ -747,7 +769,7 @@ function showCard(){
   if(cur>=queue.length){showDone();return;}
   spkStop();if(recog){try{recog.stop();}catch(e){}recog=null;}flipped=false;answered=false;
   document.getElementById("doneScreen").classList.remove("on");
-  if(tab==="comp"){const cf=pickCompFmt(queue[cur]);effFmt="comp_"+cf;
+  if(queue[cur]&&queue[cur].isSent){const cf=pickCompFmt(queue[cur]);effFmt="comp_"+cf;
     if(cf==="translate")renderCompTranslate();else if(cf==="speak")renderCompSpeak();else renderCompDict();
     updProg();updDailyInfo();return;}
   effFmt=pickFmt(queue[cur]);
@@ -1280,12 +1302,13 @@ function populateVoiceSelect(){
   const tip=document.getElementById("voiceTip");
   if(tip){const best=voicesEn[0];if(!voicesEn.length)tip.textContent="この端末に英語音声が見つかりません。";else if(best&&voiceScore(best)<30)tip.innerHTML="💡 より自然な声を使うには：<br>iOS → 設定 > アクセシビリティ > 読み上げコンテンツ > 声 > 英語 で「拡張」「プレミアム」音声をDL<br>Mac → システム設定 > アクセシビリティ > 読み上げコンテンツ > システムの声 > 管理";else tip.textContent="⭐付きは高品質音声です。";}
 }
-function openSettings(){document.getElementById("rateSlider").value=rate;document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";document.getElementById("npdSlider").value=newPerDay;document.getElementById("npdVal").textContent=newPerDay+"語/日";document.getElementById("goalSlider").value=goalBand;document.getElementById("goalVal").textContent=goalBand.toFixed(1);populateVoiceSelect();updateBackupInfo();document.getElementById("settingsModal").classList.add("on");}
+function openSettings(){document.getElementById("rateSlider").value=rate;document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";document.getElementById("npdSlider").value=newPerDay;document.getElementById("npdVal").textContent=newPerDay+"語/日";document.getElementById("goalSlider").value=goalBand;document.getElementById("goalVal").textContent=goalBand.toFixed(1);document.getElementById("spdSlider").value=sentPerDay;document.getElementById("spdVal").textContent=sentPerDay+"文/日";populateVoiceSelect();updateBackupInfo();document.getElementById("settingsModal").classList.add("on");}
 function closeSettings(){document.getElementById("settingsModal").classList.remove("on");spkStop();updDailyInfo();}
 function saveVoice(){chosenVoiceURI=document.getElementById("voiceSelEn").value;localStorage.setItem("spk_voice",chosenVoiceURI);}
 function saveRate(){rate=parseFloat(document.getElementById("rateSlider").value);document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";localStorage.setItem("spk_rate",rate);}
 function saveNpd(){newPerDay=parseInt(document.getElementById("npdSlider").value);document.getElementById("npdVal").textContent=newPerDay+"語/日";localStorage.setItem("newPerDay",newPerDay);}
 function saveGoal(){goalBand=parseFloat(document.getElementById("goalSlider").value);document.getElementById("goalVal").textContent=goalBand.toFixed(1);localStorage.setItem("goalBand",goalBand);}
+function saveSpd(){sentPerDay=parseInt(document.getElementById("spdSlider").value);document.getElementById("spdVal").textContent=sentPerDay+"文/日";localStorage.setItem("sentPerDay",sentPerDay);}
 function testVoice(){spkStart("Climate change is one of the most pressing issues of our time.","en-US",null);}
 // ── 学習データのバックアップ/復元 ──
 const BK_KEYS=["srs","newLog","streak","skillStats","goalBand","newPerDay","ia","ielts_again","ielts_deck","spk_voice","spk_rate","tab","fmt","cf","cc","id"];
