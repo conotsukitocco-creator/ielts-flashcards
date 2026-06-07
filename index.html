@@ -1100,15 +1100,44 @@ function speakSelf(q){if(answered)return;answered=true;grade(queue[cur],q);showQ
 
 // ══ 📝 瞬間英作文 ══
 function catLabel(c){return (c.cat||"").replace(/^[SW]\d+_/,"");}
+// 簡易ステミング：活用・複数形などを語幹化して別表現に寛容に
+function stem(w){
+  w=w.toLowerCase();
+  const map={am:"be",is:"be",are:"be",was:"be",were:"be",been:"be",being:"be",
+    "don't":"not","doesn't":"not","didn't":"not","won't":"not","can't":"not","cannot":"not","isn't":"not","aren't":"not","wasn't":"not","weren't":"not",
+    an:"a",the:"a","i'm":"be","it's":"be","he's":"be","she's":"be"};
+  if(map[w])return map[w];
+  if(w.length>4){
+    if(w.endsWith("ies"))return w.slice(0,-3)+"y";
+    if(w.endsWith("ing"))return w.slice(0,-3);
+    if(w.endsWith("ied"))return w.slice(0,-3)+"y";
+    if(w.endsWith("ed"))return w.slice(0,-2);
+    if(w.endsWith("es"))return w.slice(0,-2);
+    if(w.endsWith("s")&&!w.endsWith("ss"))return w.slice(0,-1);
+  }
+  return w;
+}
+// 機能語（欠落・余剰を軽く許容）
+const FUNC=new Set(["a","the","be","to","of","in","on","at","for","and","that","it","this","these","those"]);
 function diffWords(modelEn,userVal){
-  const norm=x=>x.toLowerCase().replace(/[^a-z0-9\s']/g," ").split(/\s+/).filter(Boolean);
-  const target=norm(modelEn),got=norm(userVal);
-  let correctN=0,gi=0;const marks=[];
-  target.forEach(w=>{
-    if(gi<got.length&&got[gi]===w){correctN++;gi++;marks.push('<span style="color:var(--success);font-weight:600">'+w+'</span>');}
-    else{const idx=got.indexOf(w,gi);if(idx>=0&&idx<gi+3){correctN++;gi=idx+1;marks.push('<span style="color:var(--success);font-weight:600">'+w+'</span>');}else marks.push('<span style="color:var(--danger);text-decoration:line-through">'+w+'</span>');}
+  const tok=x=>x.toLowerCase().replace(/[^a-z0-9\s']/g," ").split(/\s+/).filter(Boolean);
+  const targetRaw=tok(modelEn),gotRaw=tok(userVal);
+  const target=targetRaw.map(stem),got=gotRaw.map(stem);
+  // ① 順序依存スコア（語順が合っていれば高く・表示用マークも作る）
+  let seqN=0,gi=0;const marks=[];
+  target.forEach((w,ti)=>{
+    if(gi<got.length&&got[gi]===w){seqN++;gi++;marks.push('<span style="color:var(--success);font-weight:600">'+targetRaw[ti]+'</span>');}
+    else{const idx=got.indexOf(w,gi);if(idx>=0&&idx<gi+3){seqN++;gi=idx+1;marks.push('<span style="color:var(--success);font-weight:600">'+targetRaw[ti]+'</span>');}
+      else marks.push('<span style="color:var(--danger);text-decoration:line-through">'+targetRaw[ti]+'</span>');}
   });
-  return {acc:target.length?correctN/target.length:0,marks:marks};
+  // ② 順序非依存の集合カバー率（語順違い・別表現に寛容）。機能語は軽く割引
+  const bag={};got.forEach(w=>{bag[w]=(bag[w]||0)+1;});
+  let need=0,have=0;
+  target.forEach(w=>{const wt=FUNC.has(w)?0.3:1;need+=wt;if(bag[w]>0){have+=wt;bag[w]--;}});
+  const setAcc=need?have/need:0;
+  const seqAcc=target.length?seqN/target.length:0;
+  // 高い方を採用（順序が合えば順序スコア、別表現なら集合スコア）
+  return {acc:Math.max(seqAcc,setAcc),marks:marks};
 }
 function compDetail(){
   const c=queue[cur];const d=document.getElementById("quizDetail");
@@ -1138,7 +1167,7 @@ function renderCompTranslate(){
 }
 function submitCompTranslate(){
   if(answered)return;const c=queue[cur];const inp=document.getElementById("writeInput");const val=inp.value.trim();if(!val)return;answered=true;
-  const {acc,marks}=diffWords(c.en,val);const ok=acc>=0.65;
+  const {acc,marks}=diffWords(c.en,val);const ok=acc>=0.6;
   inp.disabled=true;document.getElementById("typeSubmit").style.display="none";
   document.getElementById("typeFb").innerHTML='モデル文一致 <b>'+Math.round(acc*100)+'%</b><div class="dict-diff">'+marks.join(" ")+'</div><div style="font-size:12px;color:var(--text3);margin-top:6px">※意味が通れば別表現でも可</div>';
   grade(c,ok?2:0);compDetail();
