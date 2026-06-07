@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="robots" content="noindex,nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IELTS">
+<meta name="theme-color" content="#007aff">
 <title>IELTS Flashcards</title>
 <style>
   :root{--bg:#f2f2f7;--card-bg:#fff;--primary:#007aff;--danger:#ff3b30;--success:#34c759;--warning:#ff9500;--text:#1c1c1e;--text2:#3c3c43cc;--text3:#8e8e93;--separator:#c6c6c8;--fill:#e5e5ea;--radius:16px;--shadow:0 4px 24px rgba(0,0,0,.10);}
@@ -216,7 +221,14 @@
 </style>
 </head>
 <body>
-<header>
+<div id="pwaBanner" style="display:none;background:#ff9500;color:#fff;padding:10px 16px;font-size:13px;line-height:1.5;text-align:center;font-weight:600;">
+  📲 このままだとiPhoneが進捗を消すことがあります。<u>共有ボタン → ホーム画面に追加</u> して、アイコンから使うと保存され続けます。
+  <span onclick="document.getElementById('pwaBanner').style.display='none'" style="margin-left:8px;text-decoration:underline;cursor:pointer">閉じる</span>
+</div>
+<div id="storageWarn" style="display:none;background:#ff3b30;color:#fff;padding:10px 16px;font-size:13px;line-height:1.5;text-align:center;font-weight:600;">
+  ⚠️ この環境ではデータを保存できません。Safariの設定で「すべてのCookieをブロック」をオフにするか、ホーム画面アプリとして開いてください。
+</div>
+<header
   <div class="app-title">IELTS 重要語 2500</div>
   <div class="hdr-btns">
     <button class="icon-btn" onclick="openGuide()" title="攻略ガイド">
@@ -1388,6 +1400,15 @@ if(tab==="comp"){document.querySelector(".fmt:not(#fmtComp)").style.display="non
 document.querySelectorAll("#fmtComp .fmt-btn").forEach(b=>b.classList.toggle("active",b.dataset.cf===compFmt));
 document.getElementById("deckNavWrap").style.display=(tab==="deck"||tab==="comp")?"":"none";
 if(tab==="comp")buildCompChips();
+// ストレージ可用性チェック
+(function(){
+  try{localStorage.setItem("__t","1");if(localStorage.getItem("__t")!=="1")throw 0;localStorage.removeItem("__t");}
+  catch(e){document.getElementById("storageWarn").style.display="block";}
+  // iOS Safariタブ（ホーム画面アプリでない）なら案内バナー
+  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone=(window.navigator.standalone===true)||(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches);
+  if(isIOS&&!standalone){document.getElementById("pwaBanner").style.display="block";}
+})();
 buildChips();updDailyInfo();startSession();
 
 </script>
