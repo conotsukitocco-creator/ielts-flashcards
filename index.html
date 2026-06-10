@@ -333,6 +333,10 @@
       <div class="row-flex"><input type="range" class="slider" id="spdSlider" min="10" max="50" step="5" value="25" oninput="saveSpd()"><span class="slider-val" id="spdVal">25%</span></div>
     </div>
     <div class="field">
+      <div class="field-label">1日の最大問題数（超えたら翌日に繰り越し）</div>
+      <div class="row-flex"><input type="range" class="slider" id="capSlider" min="60" max="400" step="20" value="180" oninput="saveCap()"><span class="slider-val" id="capVal">180問</span></div>
+    </div>
+    <div class="field">
       <div class="field-label">英語の声</div>
       <select class="vsel" id="voiceSelEn" onchange="saveVoice()"></select>
     </div>
@@ -492,13 +496,14 @@ function pickCompFmt(c){
 
 // SRS状態
 let SRS=JSON.parse(localStorage.getItem("srs")||"{}");
-let newPerDay=parseInt(localStorage.getItem("newPerDay")||"50");
+let newPerDay=parseInt(localStorage.getItem("newPerDay")||"20");
 const DAY=86400000;
 function saveSRS(){localStorage.setItem("srs",JSON.stringify(SRS));}
 function todayStr(){return new Date().toDateString();}
 function newUsedToday(){const l=JSON.parse(localStorage.getItem("newLog")||"{}");return l.date===todayStr()?l.count:0;}
 function incNewToday(){const l=JSON.parse(localStorage.getItem("newLog")||"{}");const c=(l.date===todayStr()?l.count:0)+1;localStorage.setItem("newLog",JSON.stringify({date:todayStr(),count:c}));}
 let sentRatio=parseFloat(localStorage.getItem("sentRatio")||"0.25");
+let dailyCap=parseInt(localStorage.getItem("dailyCap")||"180");
 function newUsedTodayS(){const l=JSON.parse(localStorage.getItem("newLogS")||"{}");return l.date===todayStr()?l.count:0;}
 function incNewTodayS(){const l=JSON.parse(localStorage.getItem("newLogS")||"{}");const c=(l.date===todayStr()?l.count:0)+1;localStorage.setItem("newLogS",JSON.stringify({date:todayStr(),count:c}));}
 
@@ -521,26 +526,22 @@ const DECKS=buildDecks();
 function dueCards(){const now=Date.now();return CARDS.filter(c=>SRS[c.word]&&SRS[c.word].due<=now);}
 function buildQueue(){
   if(tab==="daily"){
-    const now=Date.now();
-    const due=CARDS.filter(c=>SRS[c.word]&&SRS[c.word].due<=now);
-    const remain=Math.max(0,newPerDay-newUsedToday());
-    const fresh=CARDS.filter(c=>!SRS[c.word]).slice(0,remain);
-    let q=lagInsert(shuffle(due.concat(fresh)),fresh);
-    // 瞬間英作文(SENTENCES)も統合：全体の約 sentRatio が英作文になるよう量を決定
-    const targetS=Math.round(q.length*sentRatio/(1-sentRatio));
-    const dueS=SENTENCES.filter(c=>SRS[c.word]&&SRS[c.word].due<=now);
-    const needFresh=Math.max(0,targetS-dueS.length);
-    const freshS=SENTENCES.filter(c=>!SRS[c.word]).slice(0,needFresh);
-    const sents=shuffle(dueS.concat(freshS)).slice(0,Math.max(targetS,dueS.length));
-    // 単語列に英作文を均等に差し込む（インターリーブ）
-    if(sents.length){
-      const merged=[];const ratio=Math.max(1,Math.floor(q.length/(sents.length+1)));
-      let si=0;
-      for(let i=0;i<q.length;i++){merged.push(q[i]);if((i+1)%ratio===0&&si<sents.length)merged.push(sents[si++]);}
-      while(si<sents.length)merged.push(sents[si++]);
-      return merged;
-    }
-    return q;
+    const now=Date.now();const cap=dailyCap;
+    const dueW=CARDS.filter(c=>SRS[c.word]&&SRS[c.word].due<=now);
+    const dueS2=SENTENCES.filter(c=>SRS[c.word]&&SRS[c.word].due<=now);
+    const allDue=shuffle(dueW.concat(dueS2));
+    if(allDue.length>=cap)return allDue.slice(0,cap);
+    const room=cap-allDue.length;
+    const freshSneed=Math.round(room*sentRatio);
+    const freshWcap=Math.min(room-freshSneed,Math.max(0,newPerDay-newUsedToday()));
+    const freshW=CARDS.filter(c=>!SRS[c.word]).slice(0,freshWcap);
+    const freshSe=SENTENCES.filter(c=>!SRS[c.word]).slice(0,freshSneed);
+    const fresh=shuffle(freshW.concat(freshSe));
+    const merged=[];const r=Math.max(1,Math.floor(allDue.length/(fresh.length+1)));
+    let fi=0;
+    for(let i=0;i<allDue.length;i++){merged.push(allDue[i]);if((i+1)%r===0&&fi<fresh.length)merged.push(fresh[fi++]);}
+    while(fi<fresh.length)merged.push(fresh[fi++]);
+    return merged.length?merged:allDue;
   }else if(tab==="deck"){
     return shuffle((DECKS[curDeck]||{cards:[]}).cards.slice());
   }else if(tab==="comp"){
@@ -716,7 +717,7 @@ function updDailyInfo(){
     const remainNew=Math.max(0,newPerDay-usedNew);
     el.style.display="flex";
     const dueS=SENTENCES.filter(c=>SRS[c.word]&&SRS[c.word].due<=Date.now()).length;
-    el.innerHTML='<span>📅 単語：<b>新規 '+remainNew+'</b>／復習 '+due+'</span><span>📝 英作文 '+Math.round(sentRatio*100)+'%：本日 '+newUsedTodayS()+'文／復習 '+dueS+'</span>';
+    el.innerHTML='<span>📅 単語：<b>新規 '+remainNew+'</b>／復習 '+due+'</span><span>📝 英作文 '+Math.round(sentRatio*100)+'%／復習 '+dueS+'</span><span>1日上限 '+dailyCap+'問</span>';
   }else if(tab==="weak"){
     const n=CARDS.filter(c=>SRS[c.word]&&(SRS[c.word].lapses>0||SRS[c.word].ease<2.0)).length;
     el.style.display="flex";el.innerHTML='<span>🔥 苦手リスト：<b>'+n+'語</b></span>';
@@ -1343,13 +1344,14 @@ function populateVoiceSelect(){
   const tip=document.getElementById("voiceTip");
   if(tip){const best=voicesEn[0];if(!voicesEn.length)tip.textContent="この端末に英語音声が見つかりません。";else if(best&&voiceScore(best)<30)tip.innerHTML="💡 より自然な声を使うには：<br>iOS → 設定 > アクセシビリティ > 読み上げコンテンツ > 声 > 英語 で「拡張」「プレミアム」音声をDL<br>Mac → システム設定 > アクセシビリティ > 読み上げコンテンツ > システムの声 > 管理";else tip.textContent="⭐付きは高品質音声です。";}
 }
-function openSettings(){document.getElementById("rateSlider").value=rate;document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";document.getElementById("npdSlider").value=newPerDay;document.getElementById("npdVal").textContent=newPerDay+"語/日";document.getElementById("goalSlider").value=goalBand;document.getElementById("goalVal").textContent=goalBand.toFixed(1);document.getElementById("spdSlider").value=Math.round(sentRatio*100);document.getElementById("spdVal").textContent=Math.round(sentRatio*100)+"%";populateVoiceSelect();updateBackupInfo();document.getElementById("settingsModal").classList.add("on");}
+function openSettings(){document.getElementById("rateSlider").value=rate;document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";document.getElementById("npdSlider").value=newPerDay;document.getElementById("npdVal").textContent=newPerDay+"語/日";document.getElementById("goalSlider").value=goalBand;document.getElementById("goalVal").textContent=goalBand.toFixed(1);document.getElementById("spdSlider").value=Math.round(sentRatio*100);document.getElementById("spdVal").textContent=Math.round(sentRatio*100)+"%";document.getElementById("capSlider").value=dailyCap;document.getElementById("capVal").textContent=dailyCap+"問";populateVoiceSelect();updateBackupInfo();document.getElementById("settingsModal").classList.add("on");}
 function closeSettings(){document.getElementById("settingsModal").classList.remove("on");spkStop();updDailyInfo();}
 function saveVoice(){chosenVoiceURI=document.getElementById("voiceSelEn").value;localStorage.setItem("spk_voice",chosenVoiceURI);}
 function saveRate(){rate=parseFloat(document.getElementById("rateSlider").value);document.getElementById("rateVal").textContent=rate.toFixed(2)+"x";localStorage.setItem("spk_rate",rate);}
 function saveNpd(){newPerDay=parseInt(document.getElementById("npdSlider").value);document.getElementById("npdVal").textContent=newPerDay+"語/日";localStorage.setItem("newPerDay",newPerDay);}
 function saveGoal(){goalBand=parseFloat(document.getElementById("goalSlider").value);document.getElementById("goalVal").textContent=goalBand.toFixed(1);localStorage.setItem("goalBand",goalBand);}
 function saveSpd(){sentRatio=parseInt(document.getElementById("spdSlider").value)/100;document.getElementById("spdVal").textContent=Math.round(sentRatio*100)+"%";localStorage.setItem("sentRatio",sentRatio);}
+function saveCap(){dailyCap=parseInt(document.getElementById("capSlider").value);document.getElementById("capVal").textContent=dailyCap+"問";localStorage.setItem("dailyCap",dailyCap);}
 function testVoice(){spkStart("Climate change is one of the most pressing issues of our time.","en-US",null);}
 // ── 学習データのバックアップ/復元 ──
 const BK_KEYS=["srs","newLog","streak","skillStats","goalBand","newPerDay","ia","ielts_again","ielts_deck","spk_voice","spk_rate","tab","fmt","cf","cc","id"];
