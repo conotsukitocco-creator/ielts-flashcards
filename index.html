@@ -334,7 +334,7 @@
     </div>
     <div class="field">
       <div class="field-label">1日の最大問題数（超えたら翌日に繰り越し）</div>
-      <div class="row-flex"><input type="range" class="slider" id="capSlider" min="60" max="400" step="20" value="180" oninput="saveCap()"><span class="slider-val" id="capVal">180問</span></div>
+      <div class="row-flex"><input type="range" class="slider" id="capSlider" min="60" max="400" step="20" value="180" oninput="saveCap()"><span class="slider-val" id="capVal">180問</span></div><button class="bk-btn" style="background:#34c75915;color:var(--success);margin-top:8px" onclick="applyRecommended()">🎯 合格ペースに最適化（新規20・上限180・英作文25%）</button>
     </div>
     <div class="field">
       <div class="field-label">英語の声</div>
@@ -1351,7 +1351,7 @@ function saveRate(){rate=parseFloat(document.getElementById("rateSlider").value)
 function saveNpd(){newPerDay=parseInt(document.getElementById("npdSlider").value);document.getElementById("npdVal").textContent=newPerDay+"語/日";localStorage.setItem("newPerDay",newPerDay);}
 function saveGoal(){goalBand=parseFloat(document.getElementById("goalSlider").value);document.getElementById("goalVal").textContent=goalBand.toFixed(1);localStorage.setItem("goalBand",goalBand);}
 function saveSpd(){sentRatio=parseInt(document.getElementById("spdSlider").value)/100;document.getElementById("spdVal").textContent=Math.round(sentRatio*100)+"%";localStorage.setItem("sentRatio",sentRatio);}
-function saveCap(){dailyCap=parseInt(document.getElementById("capSlider").value);document.getElementById("capVal").textContent=dailyCap+"問";localStorage.setItem("dailyCap",dailyCap);}
+function saveCap(){dailyCap=parseInt(document.getElementById("capSlider").value);document.getElementById("capVal").textContent=dailyCap+"問";localStorage.setItem("dailyCap",dailyCap);}function applyRecommended(){newPerDay=20;sentRatio=0.25;dailyCap=180;localStorage.setItem("newPerDay",20);localStorage.setItem("sentRatio",0.25);localStorage.setItem("dailyCap",180);document.getElementById("npdSlider").value=20;document.getElementById("npdVal").textContent="20語/日";document.getElementById("spdSlider").value=25;document.getElementById("spdVal").textContent="25%";document.getElementById("capSlider").value=180;document.getElementById("capVal").textContent="180問";alert("最適化しました");startSession();}
 function testVoice(){spkStart("Climate change is one of the most pressing issues of our time.","en-US",null);}
 // ── 学習データのバックアップ/復元 ──
 const BK_KEYS=["srs","newLog","streak","skillStats","goalBand","newPerDay","ia","ielts_again","ielts_deck","spk_voice","spk_rate","tab","fmt","cf","cc","id"];
