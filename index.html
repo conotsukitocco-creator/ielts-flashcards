@@ -172,7 +172,7 @@ textarea.field{min-height:120px;resize:vertical;line-height:1.6;}
   <div class="f-row"><div class="f-lab">試験日</div><input type="date" class="inp" id="examDate" onchange="saveSettings()"></div>
   <div class="f-row"><div class="f-lab">1日の学習時間 <span class="sval" id="timeVal">40分</span></div><input type="range" class="slider" id="timeSlider" min="15" max="90" step="5" value="40" oninput="saveSettings()"></div>
   <div class="f-row"><div class="f-lab">弱点（重点的に出します）</div><div class="chip-row" id="weakChips"></div></div>
-  <div class="f-row"><div class="f-lab">Gemini APIキー（Writing/Speaking AI添削・無料）</div><input type="password" class="inp" id="geminiKey" placeholder="AIza... を貼り付け" onchange="saveSettings()"><div class="tip" id="keyTip">未設定。<b>無料</b>で取得→ <span style="color:var(--pri)">aistudio.google.com/apikey</span>（Googleログイン→Create API key、カード不要）。貼り付けるとAI添削が有効になります。</div></div>
+  <div class="f-row"><div class="f-lab">Gemini APIキー（Writing/Speaking AI添削・無料）</div><input type="password" class="inp" id="geminiKey" placeholder="AIza... を貼り付け" onchange="saveSettings()"><button class="btn btn-ok" style="margin-top:8px" onclick="testGeminiKey()">🔑 キーをテスト</button><div class="tip" id="keyTip">未設定。<b>無料</b>で取得→ <span style="color:var(--pri)">aistudio.google.com/apikey</span>（Googleログイン→Create API key、カード不要）。貼り付けるとAI添削が有効になります。</div></div>
   <div class="f-row"><div class="f-lab">読み上げ速度 <span class="sval" id="rateVal">0.90x</span></div><input type="range" class="slider" id="rateSlider" min="0.5" max="1.2" step="0.05" value="0.9" oninput="saveSettings()"></div>
   <div class="f-row"><div class="f-lab">データ管理</div>
     <button class="btn btn-ghost" style="margin-top:0" onclick="exportData()">📥 進捗を書き出し（バックアップ）</button>
@@ -435,10 +435,17 @@ async function geminiGrade(type,prompt,answer){
     :`The Japanese sentence "${prompt}" was translated to English as: '''${answer}'''. Judge correctness, explain mistakes in JAPANESE briefly, and give a natural model translation.`;
   const schema=type==="sentence"?'{"correct":true/false,"feedback_ja":"...","model":"..."}':'{"band":"6.5","feedback_ja":"...","improved":"..."}';
   const body={contents:[{parts:[{text:sys+"\n\n"+task+"\n\nReply ONLY with JSON: "+schema}]}],generationConfig:{temperature:0.3,maxOutputTokens:900}};
-  const url="https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="+encodeURIComponent(key);
-  const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  if(!res.ok){const t=await res.text();throw new Error("HTTP "+res.status+" "+t.slice(0,80));}
-  const data=await res.json();
+  const MODELS=["gemini-2.5-flash","gemini-2.0-flash","gemini-1.5-flash"];
+  let data=null,lastErr="";
+  for(const mdl of MODELS){
+    const url="https://generativelanguage.googleapis.com/v1beta/models/"+mdl+":generateContent?key="+encodeURIComponent(key);
+    const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(res.ok){data=await res.json();break;}
+    const t=await res.text();let em="";try{em=JSON.parse(t).error.message;}catch(e){em=t.slice(0,100);}
+    lastErr="["+mdl+"] HTTP "+res.status+": "+em;
+    if(res.status!==404&&res.status!==429)throw new Error(lastErr); // キー不正等は即時報告
+  }
+  if(!data)throw new Error(lastErr||"全モデルで失敗");
   let txt=data.candidates&&data.candidates[0]&&data.candidates[0].content.parts[0].text||"";
   txt=txt.replace(/```json/g,"").replace(/```/g,"").trim();
   let obj;try{obj=JSON.parse(txt);}catch(e){obj={feedback_ja:txt};}
@@ -460,6 +467,19 @@ function closeSettings(){document.getElementById("setModal").classList.remove("o
 function toggleWeak(k){const s=settings;s.weak=s.weak||[];if(s.weak.includes(k))s.weak=s.weak.filter(x=>x!==k);else s.weak.push(k);setS(s);settings=s;openSettings();}
 function saveSettings(){const s=settings;s.examDate=document.getElementById("examDate").value||s.examDate;s.dailyMin=parseInt(document.getElementById("timeSlider").value);s.rate=parseFloat(document.getElementById("rateSlider").value);s.geminiKey=document.getElementById("geminiKey").value.trim();setS(s);settings=s;
   document.getElementById("timeVal").textContent=s.dailyMin+"分";document.getElementById("rateVal").textContent=s.rate.toFixed(2)+"x";document.getElementById("keyTip").innerHTML=s.geminiKey?'✅ AI添削が有効です。':'未設定。無料で取得→ aistudio.google.com/apikey';}
+async function testGeminiKey(){
+  saveSettings();
+  const tip=document.getElementById("keyTip");
+  const key=settings.geminiKey;
+  if(!key){tip.innerHTML="❌ キーが空です。aistudio.google.com/apikey で無料取得して貼り付けてください。";return;}
+  tip.innerHTML="🔄 テスト中…";
+  try{
+    const r=await geminiGrade("sentence","私は学生です。","I am a student.");
+    tip.innerHTML="✅ キー有効！AI添削が使えます。（応答例："+(r.feedback_ja||JSON.stringify(r)).slice(0,40)+"…）";
+  }catch(e){
+    tip.innerHTML="❌ 失敗："+e.message+"<br>・キーをコピーし直す（前後の空白に注意）<br>・aistudio.google.com/apikey でキーが有効か確認";
+  }
+}
 function updBkTip(){const srs=LS.getJSON("srs",{});const lb=LS.get("lastBackup",null);document.getElementById("bkTip").innerHTML="学習データ："+Object.keys(srs).length+"項目"+(lb?"<br>最終バックアップ："+new Date(lb).toLocaleString():"<br>⚠️ 未バックアップ。教材追加や端末変更の前に書き出しを推奨。");}
 
 // ===== バックアップ =====
