@@ -443,7 +443,7 @@ async function geminiGrade(type,prompt,answer){
     if(res.ok){data=await res.json();break;}
     const t=await res.text();let em="";try{em=JSON.parse(t).error.message;}catch(e){em=t.slice(0,100);}
     lastErr="["+mdl+"] HTTP "+res.status+": "+em;
-    if(res.status!==404&&res.status!==429)throw new Error(lastErr); // キー不正等は即時報告
+    if(res.status===400||res.status===401||res.status===403)throw new Error(lastErr); // キー不正のみ即時報告。404/429/5xx(混雑)は次モデルへ
   }
   if(!data)throw new Error(lastErr||"全モデルで失敗");
   let txt=data.candidates&&data.candidates[0]&&data.candidates[0].content.parts[0].text||"";
