@@ -305,7 +305,7 @@ function speak(text,btn){if(!window.speechSynthesis)return;speechSynthesis.cance
 
 // ===== セッション =====
 let queue=[],cur=0,curKind="vocab",curTaskId="",answered=false;
-function startTask(kind,id){curKind=kind;curTaskId=id;cur=0;answered=false;
+function startTask(kind,id){SRS=LS.getJSON("srs",SRS);curKind=kind;curTaskId=id;cur=0;answered=false;
   if(kind==="vocab")queue=buildVocab();
   else if(kind==="sent")queue=buildSent(10);
   else if(kind==="listen")queue=buildListen(5);
@@ -369,7 +369,7 @@ function renderSent(){const c=queue[cur];const isNew=!SRS[c.word];
   let h='<div class="q-card"><div class="q-label">日本語を英語に<span class="tag tag-w">英作文</span>'+(isNew?'<span class="tag tag-c">NEW</span>':'')+'</div><div class="sentence" style="text-align:center;font-size:19px">'+c.ja+'</div>'+(c.hint?'<div class="ja" style="text-align:center">ヒント：<b>'+c.hint+'</b></div>':'')+'</div><textarea class="field" id="inp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="英文を入力…"></textarea><button class="btn btn-pri" onclick="submitSent()">答え合わせ</button><div id="detail"></div>';
   document.getElementById("sessBody").innerHTML=h;document.getElementById("inp").focus();}
 function submitSent(){if(answered)return;const c=queue[cur];const v=document.getElementById("inp").value.trim();if(!v)return;answered=true;
-  const {acc,marks}=diffWords(c.en,v);const ok=acc>=0.6;const wasNew=!SRS[c.word];grade(c,ok?2:0,"writing");if(wasNew)incNew();
+  const {acc,marks}=diffWords(c.en,v);const ok=acc>=0.6;const wasNew=!SRS[c.word];grade(c,ok?2:0,"sent");if(wasNew)incNew();
   const tip=CAT_TIPS[c.cat];
   let h='<div class="fb">モデル一致 <b>'+Math.round(acc*100)+'%</b></div><div class="box diff">'+marks.join(" ")+'</div><div class="box"><div class="lab">モデル文</div><span style="font-style:italic">'+c.en+'</span> <button class="spk-mini" onclick="speak(\''+c.en.replace(/'/g,"\\'")+'\',this)">🔊</button></div>'+(tip?'<div class="box"><div class="lab">💡 文法ポイント</div>'+tip+'</div>':'')+geminiBtn(c.ja,c.en,v,"sent")+'<button class="btn btn-pri" onclick="next()">次へ →</button>';
   document.getElementById("detail").innerHTML=h;document.getElementById("detail").scrollIntoView({behavior:"smooth",block:"nearest"});}
