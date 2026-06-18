@@ -305,24 +305,30 @@ function speak(text,btn){if(!window.speechSynthesis)return;speechSynthesis.cance
 
 // ===== セッション =====
 let queue=[],cur=0,curKind="vocab",curTaskId="",answered=false;
-function sessSaveKey(id){return "sess_prog_"+id+"_"+todayStr();}
+function sessSaveKey(id){return "sp2_"+id+"_"+todayStr();}
 function saveSessionProgress(){
-  if(!curTaskId||cur===0)return;
-  LS.setJSON(sessSaveKey(curTaskId),{queue,cur,kind:curKind});
+  if(!curTaskId||!queue.length)return;
+  const resumeAt=answered?cur+1:cur;
+  if(resumeAt>=queue.length)return;
+  // word キーのみ保存（軽量・確実）
+  LS.setJSON(sessSaveKey(curTaskId),{words:queue.map(c=>c.word),cur:resumeAt,kind:curKind});
 }
 function startTask(kind,id){SRS=LS.getJSON("srs",SRS);curKind=kind;curTaskId=id;answered=false;
-  // 同じタスクの途中セッションがあれば再開
-  const saved=LS.getJSON(sessSaveKey(id),null);
-  if(saved&&saved.kind===kind&&saved.queue&&saved.cur>0&&saved.cur<saved.queue.length){
-    queue=saved.queue;cur=saved.cur;
-  } else {
-    cur=0;
-    if(kind==="vocab")queue=buildVocab();
-    else if(kind==="sent")queue=buildSent(10);
-    else if(kind==="listen")queue=buildListen(5);
-    else if(kind==="write")queue=[pickWriting()];
-    else if(kind==="speak")queue=[pickSpeaking()];
+  cur=0;
+  if(kind==="vocab")queue=buildVocab();
+  else if(kind==="sent"){
+    // 途中セッションがあれば再開
+    const saved=LS.getJSON(sessSaveKey(id),null);
+    if(saved&&saved.kind==="sent"&&saved.words&&saved.cur>0&&saved.cur<saved.words.length){
+      const lookup=new Map(SENTENCES.map(c=>[c.word,c]));
+      const restored=saved.words.map(w=>lookup.get(w)).filter(Boolean);
+      if(restored.length>saved.cur){queue=restored;cur=saved.cur;}
+      else queue=buildSent(10);
+    } else queue=buildSent(10);
   }
+  else if(kind==="listen")queue=buildListen(5);
+  else if(kind==="write")queue=[pickWriting()];
+  else if(kind==="speak")queue=[pickSpeaking()];
   document.getElementById("sess").classList.add("on");
   show();}
 function closeSession(){if(window.speechSynthesis)speechSynthesis.cancel();if(recog){try{recog.stop();}catch(e){}recog=null;}saveSessionProgress();document.getElementById("sess").classList.remove("on");renderHome();}
