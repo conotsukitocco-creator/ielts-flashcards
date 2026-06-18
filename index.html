@@ -305,15 +305,30 @@ function speak(text,btn){if(!window.speechSynthesis)return;speechSynthesis.cance
 
 // ===== セッション =====
 let queue=[],cur=0,curKind="vocab",curTaskId="",answered=false;
-function startTask(kind,id){SRS=LS.getJSON("srs",SRS);curKind=kind;curTaskId=id;cur=0;answered=false;
-  if(kind==="vocab")queue=buildVocab();
-  else if(kind==="sent")queue=buildSent(10);
-  else if(kind==="listen")queue=buildListen(5);
-  else if(kind==="write")queue=[pickWriting()];
-  else if(kind==="speak")queue=[pickSpeaking()];
+function sessSaveKey(id){return "sess_prog_"+id+"_"+todayStr();}
+function saveSessionProgress(){
+  if(!curTaskId||cur===0)return;
+  LS.setJSON(sessSaveKey(curTaskId),{queue,cur,kind:curKind});
+}
+function startTask(kind,id){SRS=LS.getJSON("srs",SRS);curKind=kind;curTaskId=id;answered=false;
+  // 同じタスクの途中セッションがあれば再開
+  const saved=LS.getJSON(sessSaveKey(id),null);
+  if(saved&&saved.kind===kind&&saved.queue&&saved.cur>0&&saved.cur<saved.queue.length){
+    queue=saved.queue;cur=saved.cur;
+  } else {
+    cur=0;
+    if(kind==="vocab")queue=buildVocab();
+    else if(kind==="sent")queue=buildSent(10);
+    else if(kind==="listen")queue=buildListen(5);
+    else if(kind==="write")queue=[pickWriting()];
+    else if(kind==="speak")queue=[pickSpeaking()];
+  }
   document.getElementById("sess").classList.add("on");
   show();}
-function closeSession(){if(window.speechSynthesis)speechSynthesis.cancel();if(recog){try{recog.stop();}catch(e){}recog=null;}document.getElementById("sess").classList.remove("on");renderHome();}
+function closeSession(){if(window.speechSynthesis)speechSynthesis.cancel();if(recog){try{recog.stop();}catch(e){}recog=null;}saveSessionProgress();document.getElementById("sess").classList.remove("on");renderHome();}
+function done(){localStorage.removeItem(sessSaveKey(curTaskId));markDone(curTaskId);
+  document.getElementById("sessBody").innerHTML='<div class="done-screen"><div class="ico">🎉</div><h2>完了！</h2><p>'+({vocab:"語彙",sent:"瞬間英作文",listen:"リスニング",write:"ライティング",speak:"スピーキング"}[curKind])+'のタスクを終えました。<br>この調子で毎日続けましょう。</p><button class="btn btn-pri" onclick="closeSession()">ホームに戻る</button></div>';
+  document.getElementById("sessBar").style.width="100%";document.getElementById("sessCount").textContent="";}
 function buildVocab(){const now=Date.now();const due=CARDS.filter(c=>SRS[c.word]&&SRS[c.word].due<=now);const cap=Math.max(0,(settings.dailyMin>=60?30:settings.dailyMin>=30?20:12)-newToday());const fresh=CARDS.filter(c=>!SRS[c.word]).slice(0,cap);return shuffle(due.slice(0,40).concat(fresh));}
 function newToday(){const l=LS.getJSON("nlog",{});return l.d===todayStr()?l.n:0;}
 function incNew(){const l=LS.getJSON("nlog",{});const n=(l.d===todayStr()?l.n:0)+1;LS.setJSON("nlog",{d:todayStr(),n});}
