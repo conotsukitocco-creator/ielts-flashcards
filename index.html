@@ -413,10 +413,16 @@ const W_PROMPTS=[
  {q:"Some people think that environmental problems should be solved on a global scale while others believe it is better to deal with them nationally. Discuss both views and give your opinion.",ja:"環境問題は地球規模で解決すべきという人もいれば、国単位で対処する方が良いという人もいます。両論を論じ意見を述べなさい。"},
 ];
 function pickWriting(){const i=Math.floor(Date.now()/DAY)%W_PROMPTS.length;return {kind:"write",...W_PROMPTS[i]};}
+function writeDraftKey(){return "wdraft_"+todayStr();}
 function renderWrite(){const c=queue[cur];
-  let h='<div class="q-card"><div class="q-label">Writing Task2（目安250語・20分）<span class="tag tag-w">ライティング</span></div><div class="sentence" style="font-size:16px">'+c.q+'</div><div class="ja">'+c.ja+'</div></div><textarea class="field" id="inp" style="min-height:200px" placeholder="ここにエッセイを書く（英語）…"></textarea><div class="ja" id="wc" style="text-align:right">0 語</div><button class="btn btn-pri" onclick="submitWrite()">AI添削を受ける</button><div id="detail"></div>';
-  document.getElementById("sessBody").innerHTML=h;const inp=document.getElementById("inp");inp.oninput=()=>{document.getElementById("wc").textContent=(inp.value.trim().split(/\s+/).filter(Boolean).length)+" 語";};inp.focus();}
-function submitWrite(){if(answered)return;const c=queue[cur];const v=document.getElementById("inp").value.trim();if(v.split(/\s+/).filter(Boolean).length<30){alert("もう少し書いてみましょう（30語以上）。");return;}answered=true;
+  const draft=LS.get(writeDraftKey(),"");
+  let h='<div class="q-card"><div class="q-label">Writing Task2（目安250語・20分）<span class="tag tag-w">ライティング</span></div><div class="sentence" style="font-size:16px">'+c.q+'</div><div class="ja">'+c.ja+'</div></div><textarea class="field" id="inp" style="min-height:200px" placeholder="ここにエッセイを書く（英語）…"></textarea><div class="ja" id="wc" style="text-align:right">0 語</div>'+(draft?'<div class="tip" style="color:var(--ok)">✅ 下書きを復元しました</div>':'')+'<button class="btn btn-pri" onclick="submitWrite()">AI添削を受ける</button><div id="detail"></div>';
+  document.getElementById("sessBody").innerHTML=h;
+  const inp=document.getElementById("inp");
+  if(draft){inp.value=draft;document.getElementById("wc").textContent=(draft.trim().split(/\s+/).filter(Boolean).length)+" 語";}
+  inp.oninput=()=>{const wc=inp.value.trim().split(/\s+/).filter(Boolean).length;document.getElementById("wc").textContent=wc+" 語";LS.set(writeDraftKey(),inp.value);};
+  inp.focus();}
+function submitWrite(){if(answered)return;const c=queue[cur];const v=document.getElementById("inp").value.trim();if(v.split(/\s+/).filter(Boolean).length<30){alert("もう少し書いてみましょう（30語以上）。");return;}answered=true;localStorage.removeItem(writeDraftKey());
   skillStats.writing=skillStats.writing||{seen:0,correct:0};skillStats.writing.seen++;LS.setJSON("skillStats",skillStats);
   const det=document.getElementById("detail");
   if(!settings.geminiKey){det.innerHTML=offlineWritingFb(v)+'<button class="btn btn-pri" onclick="next()">完了</button>';det.scrollIntoView({behavior:"smooth"});return;}
