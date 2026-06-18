@@ -313,22 +313,22 @@ function saveSessionProgress(){
   // word キーのみ保存（軽量・確実）
   LS.setJSON(sessSaveKey(curTaskId),{words:queue.map(c=>c.word),cur:resumeAt,kind:curKind});
 }
-function startTask(kind,id){SRS=LS.getJSON("srs",SRS);curKind=kind;curTaskId=id;answered=false;
-  cur=0;
-  if(kind==="vocab")queue=buildVocab();
-  else if(kind==="sent"){
-    // 途中セッションがあれば再開
-    const saved=LS.getJSON(sessSaveKey(id),null);
-    if(saved&&saved.kind==="sent"&&saved.words&&saved.cur>0&&saved.cur<saved.words.length){
-      const lookup=new Map(SENTENCES.map(c=>[c.word,c]));
-      const restored=saved.words.map(w=>lookup.get(w)).filter(Boolean);
-      if(restored.length>saved.cur){queue=restored;cur=saved.cur;}
-      else queue=buildSent(10);
-    } else queue=buildSent(10);
+function restoreOrBuild(id,kind,buildFn){
+  const saved=LS.getJSON(sessSaveKey(id),null);
+  if(saved&&saved.kind===kind&&saved.words&&saved.cur>0&&saved.cur<saved.words.length){
+    const pool=kind==="sent"?SENTENCES:CARDS;
+    const lookup=new Map(pool.map(c=>[c.word,c]));
+    const restored=saved.words.map(w=>lookup.get(w)).filter(Boolean);
+    if(restored.length>saved.cur){queue=restored;cur=saved.cur;return;}
   }
-  else if(kind==="listen")queue=buildListen(5);
-  else if(kind==="write")queue=[pickWriting()];
-  else if(kind==="speak")queue=[pickSpeaking()];
+  cur=0;queue=buildFn();
+}
+function startTask(kind,id){SRS=LS.getJSON("srs",SRS);curKind=kind;curTaskId=id;answered=false;
+  if(kind==="vocab")restoreOrBuild(id,kind,buildVocab);
+  else if(kind==="sent")restoreOrBuild(id,kind,()=>buildSent(10));
+  else if(kind==="listen")restoreOrBuild(id,kind,()=>buildListen(5));
+  else if(kind==="write"){cur=0;queue=[pickWriting()];}
+  else if(kind==="speak"){cur=0;queue=[pickSpeaking()];}
   document.getElementById("sess").classList.add("on");
   show();}
 function closeSession(){if(window.speechSynthesis)speechSynthesis.cancel();if(recog){try{recog.stop();}catch(e){}recog=null;}saveSessionProgress();document.getElementById("sess").classList.remove("on");renderHome();}
